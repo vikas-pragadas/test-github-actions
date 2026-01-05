@@ -10,3 +10,7 @@ def home():
 @app.get("/hello")
 def read_hello():
     return {"message": "hello word"}
+
+@app.get("/test")
+def test():
+    return {"message": "testing the ec2 cicd"}
