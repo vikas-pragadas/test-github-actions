@@ -16,7 +16,7 @@ jobs:
     # OIDC Authentication (NO AWS KEYS!)
     - uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-arn: arn:aws:iam::790261630365:role/GitHubActionsAppRunnerRole
+        role-to-assume: arn:aws:iam::790261630365:role/GitHubActionsAppRunnerRole
         aws-region: us-east-1
     
     # Build & Push to ECR
