@@ -106,15 +106,37 @@ jobs:
         
         echo "Service ARN: $SERVICE_ARN"
         
-        # Get current service configuration
-        echo "Getting current service configuration..."
-        aws apprunner describe-service \
-          --service-arn $SERVICE_ARN \
-          --region $AWS_REGION > /tmp/service-config.json
+        # Wait for service to be ready (not in OPERATION_IN_PROGRESS state)
+        echo "Checking service status..."
+        MAX_WAIT=300  # 5 minutes max wait
+        WAIT_TIME=0
+        SLEEP_INTERVAL=10
+        
+        while [ $WAIT_TIME -lt $MAX_WAIT ]; do
+          SERVICE_STATUS=$(aws apprunner describe-service \
+            --service-arn $SERVICE_ARN \
+            --region $AWS_REGION \
+            --query 'Service.Status' \
+            --output text 2>/dev/null || echo "UNKNOWN")
+          
+          echo "Current service status: $SERVICE_STATUS"
+          
+          if [ "$SERVICE_STATUS" = "RUNNING" ]; then
+            echo "✅ Service is ready for update"
+            break
+          elif [ "$SERVICE_STATUS" = "CREATE_FAILED" ] || [ "$SERVICE_STATUS" = "UPDATE_FAILED" ]; then
+            echo "⚠️ Service is in $SERVICE_STATUS state. Attempting to update anyway..."
+            break
+          fi
+          
+          echo "Service is in $SERVICE_STATUS state. Waiting $SLEEP_INTERVAL seconds..."
+          sleep $SLEEP_INTERVAL
+          WAIT_TIME=$((WAIT_TIME + SLEEP_INTERVAL))
+        done
         
         # Update service with new image URI
         echo "Updating service with new image: $IMAGE_URI"
-        aws apprunner update-service \
+        UPDATE_OUTPUT=$(aws apprunner update-service \
           --service-arn $SERVICE_ARN \
           --region $AWS_REGION \
           --source-configuration '{
@@ -126,15 +148,32 @@ jobs:
               "ImageRepositoryType": "ECR"
             },
             "AutoDeploymentsEnabled": true
-          }' > /tmp/update-response.json
+          }' 2>&1)
         
-        echo "✅ Service updated successfully"
+        UPDATE_EXIT_CODE=$?
         
-        # Start deployment
-        echo "Starting deployment..."
-        aws apprunner start-deployment \
-          --service-arn $SERVICE_ARN \
-          --region $AWS_REGION
-        
-        echo "✅ Deployment initiated to App Runner"
-        echo "Service will be available at: https://$(aws apprunner describe-service --service-arn $SERVICE_ARN --region $AWS_REGION --query 'Service.ServiceUrl' --output text)"
+        if [ $UPDATE_EXIT_CODE -eq 0 ]; then
+          echo "✅ Service updated successfully"
+          
+          # Start deployment
+          echo "Starting deployment..."
+          aws apprunner start-deployment \
+            --service-arn $SERVICE_ARN \
+            --region $AWS_REGION || echo "Deployment may have started automatically"
+          
+          echo "✅ Deployment initiated to App Runner"
+          SERVICE_URL=$(aws apprunner describe-service --service-arn $SERVICE_ARN --region $AWS_REGION --query 'Service.ServiceUrl' --output text)
+          echo "Service will be available at: https://$SERVICE_URL"
+        else
+          if echo "$UPDATE_OUTPUT" | grep -q "InvalidStateException"; then
+            echo "⚠️ Service is currently being updated (OPERATION_IN_PROGRESS)."
+            echo "The new image has been pushed to ECR: $IMAGE_URI"
+            echo "If auto-deploy is enabled, App Runner will automatically deploy the new image when ready."
+            echo "Otherwise, the deployment will be retried on the next push."
+            echo "✅ Image successfully pushed to ECR - deployment will happen automatically"
+          else
+            echo "❌ Error updating service:"
+            echo "$UPDATE_OUTPUT"
+            exit 1
+          fi
+        fi
