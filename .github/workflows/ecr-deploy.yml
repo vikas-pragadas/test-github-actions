@@ -9,6 +9,7 @@ on:
 env:
   AWS_REGION: us-east-1                   # CHANGE THIS: Your AWS region
   ECR_REPOSITORY: fastapi-app              # CHANGE THIS: Your ECR repository name
+  APP_RUNNER_SERVICE: fastapi-app-service  # CHANGE THIS: Your App Runner service name
 
 permissions:
   id-token: write   # Required for OIDC
@@ -66,3 +67,61 @@ jobs:
         echo "Repository: ${{ env.ECR_REPOSITORY }}"
         echo "Tag: ${{ github.sha }}"
         echo "Full URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+    
+    - name: Deploy to App Runner
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ github.sha }}
+        APP_RUNNER_SERVICE: ${{ env.APP_RUNNER_SERVICE }}
+        AWS_REGION: ${{ env.AWS_REGION }}
+      run: |
+        echo "🚀 Deploying to App Runner..."
+        IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        echo "Image URI: $IMAGE_URI"
+        
+        # Get App Runner service ARN
+        SERVICE_ARN=$(aws apprunner list-services \
+          --region $AWS_REGION \
+          --query "ServiceSummaryList[?ServiceName=='$APP_RUNNER_SERVICE'].ServiceArn" \
+          --output text)
+        
+        if [ -z "$SERVICE_ARN" ]; then
+          echo "❌ Error: App Runner service '$APP_RUNNER_SERVICE' not found!"
+          exit 1
+        fi
+        
+        echo "Service ARN: $SERVICE_ARN"
+        
+        # Get current service configuration
+        echo "Getting current service configuration..."
+        aws apprunner describe-service \
+          --service-arn $SERVICE_ARN \
+          --region $AWS_REGION > /tmp/service-config.json
+        
+        # Update service with new image URI
+        echo "Updating service with new image: $IMAGE_URI"
+        aws apprunner update-service \
+          --service-arn $SERVICE_ARN \
+          --region $AWS_REGION \
+          --source-configuration '{
+            "ImageRepository": {
+              "ImageIdentifier": "'"$IMAGE_URI"'",
+              "ImageConfiguration": {
+                "Port": "8000"
+              },
+              "ImageRepositoryType": "ECR"
+            },
+            "AutoDeploymentsEnabled": true
+          }' > /tmp/update-response.json
+        
+        echo "✅ Service updated successfully"
+        
+        # Start deployment
+        echo "Starting deployment..."
+        aws apprunner start-deployment \
+          --service-arn $SERVICE_ARN \
+          --region $AWS_REGION
+        
+        echo "✅ Deployment initiated to App Runner"
+        echo "Service will be available at: https://$(aws apprunner describe-service --service-arn $SERVICE_ARN --region $AWS_REGION --query 'Service.ServiceUrl' --output text)"
