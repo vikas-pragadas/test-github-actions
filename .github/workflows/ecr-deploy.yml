@@ -80,6 +80,10 @@ jobs:
         IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
         echo "Image URI: $IMAGE_URI"
         
+        # List all App Runner services to help debug
+        echo "Listing all App Runner services..."
+        aws apprunner list-services --region $AWS_REGION --query "ServiceSummaryList[*].[ServiceName,ServiceArn]" --output table
+        
         # Get App Runner service ARN
         SERVICE_ARN=$(aws apprunner list-services \
           --region $AWS_REGION \
@@ -88,6 +92,15 @@ jobs:
         
         if [ -z "$SERVICE_ARN" ]; then
           echo "❌ Error: App Runner service '$APP_RUNNER_SERVICE' not found!"
+          echo "Please create the App Runner service first, or update APP_RUNNER_SERVICE in the workflow to match your existing service name."
+          echo ""
+          echo "To create the service:"
+          echo "1. Go to AWS App Runner Console"
+          echo "2. Click 'Create service'"
+          echo "3. Select your ECR repository: $ECR_REPOSITORY"
+          echo "4. Name the service: $APP_RUNNER_SERVICE"
+          echo "5. Configure port: 8000"
+          echo "6. Select IAM role: AppRunnerServiceRole"
           exit 1
         fi
         
