@@ -154,16 +154,14 @@ jobs:
         
         if [ $UPDATE_EXIT_CODE -eq 0 ]; then
           echo "✅ Service updated successfully"
-          
-          # Start deployment
-          echo "Starting deployment..."
-          aws apprunner start-deployment \
-            --service-arn $SERVICE_ARN \
-            --region $AWS_REGION || echo "Deployment may have started automatically"
-          
-          echo "✅ Deployment initiated to App Runner"
+          echo "✅ Deployment started automatically by App Runner"
+          echo ""
+          echo "Note: App Runner will automatically deploy the new image."
+          echo "This may take 5-10 minutes. You can monitor the deployment in the App Runner console."
           SERVICE_URL=$(aws apprunner describe-service --service-arn $SERVICE_ARN --region $AWS_REGION --query 'Service.ServiceUrl' --output text)
-          echo "Service will be available at: https://$SERVICE_URL"
+          echo ""
+          echo "Service URL: https://$SERVICE_URL"
+          echo "Once deployment completes, your updated endpoints will be available."
         else
           if echo "$UPDATE_OUTPUT" | grep -q "InvalidStateException"; then
             echo "⚠️ Service is currently being updated (OPERATION_IN_PROGRESS)."
