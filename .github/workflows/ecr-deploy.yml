@@ -9,7 +9,6 @@ on:
 env:
   AWS_REGION: us-east-1                   # CHANGE THIS: Your AWS region
   ECR_REPOSITORY: fastapi-app              # CHANGE THIS: Your ECR repository name
-  IMAGE_TAG: latest                        # Image tag (can be dynamic based on branch/tag)
 
 permissions:
   id-token: write   # Required for OIDC
@@ -40,7 +39,7 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        IMAGE_TAG: ${{ github.sha }}
       run: |
         echo "Building Docker image..."
         echo "ECR Registry: $ECR_REGISTRY"
@@ -54,7 +53,7 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        IMAGE_TAG: ${{ github.sha }}
       run: |
         echo "Pushing Docker image to ECR..."
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -65,5 +64,5 @@ jobs:
       run: |
         echo "✅ Successfully pushed image to ECR"
         echo "Repository: ${{ env.ECR_REPOSITORY }}"
-        echo "Tag: ${{ env.IMAGE_TAG }}"
-        echo "Full URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+        echo "Tag: ${{ github.sha }}"
+        echo "Full URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
