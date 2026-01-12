@@ -1,0 +1,69 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  AWS_REGION: us-east-1                   # CHANGE THIS: Your AWS region
+  ECR_REPOSITORY: fastapi-app              # CHANGE THIS: Your ECR repository name
+  IMAGE_TAG: latest                        # Image tag (can be dynamic based on branch/tag)
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read    # Required for checkout
+
+jobs:
+  build-and-push:
+    name: Build Docker Image and Push to ECR
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::790261630365:oidc-provider/GitHubActionsECRRole  # CHANGE THIS
+        aws-region: ${{ env.AWS_REGION }}
+        role-session-name: GitHubActions-ECR-Push
+    
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+    
+    - name: Build Docker image
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+      run: |
+        echo "Building Docker image..."
+        echo "ECR Registry: $ECR_REGISTRY"
+        echo "Repository: $ECR_REPOSITORY"
+        echo "Tag: $IMAGE_TAG"
+        
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+    
+    - name: Push Docker image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+      run: |
+        echo "Pushing Docker image to ECR..."
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "Image pushed successfully!"
+        echo "Image URI: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+    
+    - name: Output image details
+      run: |
+        echo "✅ Successfully pushed image to ECR"
+        echo "Repository: ${{ env.ECR_REPOSITORY }}"
+        echo "Tag: ${{ env.IMAGE_TAG }}"
+        echo "Full URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
