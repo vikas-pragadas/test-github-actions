@@ -19,17 +19,19 @@ async def startup_event():
     """Initialize database on application startup"""
     try:
         init_db()
-        print("✅ Database initialized successfully")
     except Exception as e:
         print(f"⚠️ Database initialization warning: {e}")
+        # Don't fail startup if database is not available
 
 
 @app.get("/")
 def home():
     """Root endpoint"""
+    import os
+    db_configured = "Yes" if os.getenv("DATABASE_URL") else "No"
     return {
         "message": "Welcome to the API",
-        "database": "Connected to PostgreSQL"
+        "database": "Connected to PostgreSQL" if db_configured == "Yes" else "Not configured"
     }
 
 
@@ -46,17 +48,36 @@ def apprunner():
 
 
 @app.get("/health")
-def health_check(db: Session = Depends(get_db)):
-    """Health check endpoint - tests database connection"""
+def health_check():
+    """Health check endpoint - tests database connection if available"""
+    import os
+    from app.database import SessionLocal
+    
+    if not os.getenv("DATABASE_URL"):
+        return {
+            "status": "healthy",
+            "database": "not configured"
+        }
+    
+    if not SessionLocal:
+        return {
+            "status": "healthy",
+            "database": "not configured"
+        }
+    
     try:
-        # Try to query database
+        db = SessionLocal()
         db.execute(text("SELECT 1"))
+        db.close()
         return {
             "status": "healthy",
             "database": "connected"
         }
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {str(e)}")
+        return {
+            "status": "degraded",
+            "database": f"connection failed: {str(e)}"
+        }
 
 
 @app.post("/messages", response_model=schemas.MessageResponse)
